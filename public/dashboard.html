@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wanderlust — Dashboard Thompson Sampling</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;}
+
+/* NAV */
+.nav{background:#1a1d27;border-bottom:1px solid #2d3148;padding:0 32px;display:flex;align-items:center;justify-content:space-between;height:60px;}
+.nav-brand{display:flex;align-items:center;gap:10px;}
+.nav-brand .logo{color:#f58d54;font-weight:800;font-size:18px;letter-spacing:1px;}
+.nav-brand .sub{font-size:12px;color:#64748b;letter-spacing:2px;text-transform:uppercase;}
+.nav-right{display:flex;align-items:center;gap:12px;}
+.nav-link{color:#94a3b8;font-size:13px;text-decoration:none;padding:6px 12px;border-radius:6px;transition:.2s;}
+.nav-link:hover{background:#2d3148;color:white;}
+.btn-reset{background:#ef4444;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;}
+.btn-reset:hover{background:#dc2626;}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+/* MAIN */
+.main{padding:28px 32px;max-width:1400px;margin:0 auto;}
+.page-title{font-size:22px;font-weight:700;margin-bottom:6px;}
+.page-sub{font-size:13px;color:#64748b;margin-bottom:28px;}
+
+/* KPI CARDS */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
+.kpi{background:#1a1d27;border:1px solid #2d3148;border-radius:14px;padding:20px 22px;}
+.kpi .label{font-size:11px;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;}
+.kpi .value{font-size:2rem;font-weight:700;line-height:1;}
+.kpi .delta{font-size:12px;margin-top:6px;color:#64748b;}
+.kpi.orange .value{color:#f58d54;}
+.kpi.green  .value{color:#22c55e;}
+.kpi.blue   .value{color:#60a5fa;}
+.kpi.purple .value{color:#a78bfa;}
+
+/* VARIANTES */
+.variants-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px;}
+.variant-card{background:#1a1d27;border:1px solid #2d3148;border-radius:14px;padding:22px;position:relative;overflow:hidden;transition:.2s;}
+.variant-card.winner{border-color:#f58d54;box-shadow:0 0 0 1px #f58d54;}
+.variant-card .winner-badge{position:absolute;top:12px;right:12px;background:#f58d54;color:white;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:1px;}
+.variant-card .v-name{font-size:14px;font-weight:700;margin-bottom:4px;}
+.variant-card .v-desc{font-size:11px;color:#64748b;margin-bottom:16px;}
+.variant-card .v-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;}
+.v-stat .sl{font-size:10px;color:#64748b;margin-bottom:3px;}
+.v-stat .sv{font-size:18px;font-weight:700;}
+.beta-label{font-size:10px;color:#64748b;margin-bottom:6px;}
+.beta-track{background:#2d3148;border-radius:4px;height:8px;overflow:hidden;}
+.beta-fill{height:100%;border-radius:4px;transition:width .5s;}
+.fill-a{background:#60a5fa;}
+.fill-b{background:#22c55e;}
+.fill-c{background:#f58d54;}
+
+/* CHARTS ROW */
+.charts-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:28px;}
+.chart-card{background:#1a1d27;border:1px solid #2d3148;border-radius:14px;padding:22px;}
+.chart-card h3{font-size:14px;font-weight:600;margin-bottom:16px;color:#94a3b8;}
+.chart-wrap{position:relative;height:220px;}
+
+/* UTM + LEADS */
+.bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.table-card{background:#1a1d27;border:1px solid #2d3148;border-radius:14px;padding:22px;}
+.table-card h3{font-size:14px;font-weight:600;margin-bottom:16px;color:#94a3b8;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;color:#64748b;font-weight:600;padding:6px 10px;border-bottom:1px solid #2d3148;font-size:11px;letter-spacing:.5px;text-transform:uppercase;}
+td{padding:8px 10px;border-bottom:1px solid #1e2235;color:#cbd5e1;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#1e2235;}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;}
+.badge-a{background:#1e3a5f;color:#60a5fa;}
+.badge-b{background:#14532d;color:#22c55e;}
+.badge-c{background:#431407;color:#f58d54;}
+
+/* UTM source chips */
+.utm-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2d3148;}
+.utm-row:last-child{border-bottom:none;}
+.utm-name{font-size:13px;color:#cbd5e1;}
+.utm-count{font-size:13px;font-weight:700;color:#f58d54;}
+.utm-bar-wrap{flex:1;margin:0 12px;background:#2d3148;border-radius:4px;height:6px;}
+.utm-bar{background:#f58d54;height:6px;border-radius:4px;}
+
+/* API TEST SECTION */
+.api-section{background:#1a1d27;border:1px solid #2d3148;border-radius:14px;padding:22px;margin-bottom:28px;}
+.api-section h3{font-size:14px;font-weight:600;margin-bottom:16px;color:#94a3b8;}
+.api-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.api-btn{background:#2d3148;border:1px solid #3d4468;color:#cbd5e1;border-radius:8px;padding:10px 14px;font-size:12px;cursor:pointer;text-align:left;transition:.2s;}
+.api-btn:hover{background:#3d4468;color:white;}
+.api-btn .method{font-size:10px;font-weight:700;letter-spacing:1px;margin-bottom:4px;}
+.method-get{color:#22c55e;}.method-post{color:#f58d54;}
+.api-response{background:#0d1117;border:1px solid #2d3148;border-radius:8px;padding:14px;font-family:'Courier New',monospace;font-size:11px;color:#22c55e;margin-top:12px;min-height:60px;max-height:200px;overflow-y:auto;white-space:pre-wrap;}
+
+/* REFRESH */
+.refresh-bar{display:flex;align-items:center;justify-content:between;gap:10px;margin-bottom:20px;}
+.refresh-info{font-size:12px;color:#64748b;margin-left:auto;}
+.btn-refresh{background:#2d3148;color:#94a3b8;border:none;border-radius:8px;padding:7px 16px;font-size:12px;cursor:pointer;transition:.2s;}
+.btn-refresh:hover{background:#3d4468;color:white;}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <div>
+      <div class="logo">✈ WANDERLUST</div>
+      <div class="sub">Dashboard · Thompson Sampling</div>
+    </div>
+  </div>
+  <div class="nav-right">
+    <div class="live-dot" title="En vivo"></div>
+    <a href="/" class="nav-link">← Ver sitio</a>
+    <a href="/api/stats" class="nav-link" target="_blank">API JSON</a>
+    <button class="btn-reset" onclick="resetData()">↺ Reset demo</button>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="page-title">Panel de Control — A/B/C Testing</div>
+  <div class="page-sub">Thompson Sampling en tiempo real · Base de datos SQLite local</div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid">
+    <div class="kpi orange">
+      <div class="label">Impresiones totales</div>
+      <div class="value" id="kpi-imp">—</div>
+      <div class="delta">visitas registradas</div>
+    </div>
+    <div class="kpi green">
+      <div class="label">Conversiones totales</div>
+      <div class="value" id="kpi-conv">—</div>
+      <div class="delta">clicks en CTA / forms</div>
+    </div>
+    <div class="kpi blue">
+      <div class="label">Tasa global</div>
+      <div class="value" id="kpi-tasa">—</div>
+      <div class="delta">conversión promedio</div>
+    </div>
+    <div class="kpi purple">
+      <div class="label">Leads recibidos</div>
+      <div class="value" id="kpi-leads">—</div>
+      <div class="delta">formularios enviados</div>
+    </div>
+  </div>
+
+  <!-- VARIANTES -->
+  <div class="variants-grid" id="variants-grid">
+    <!-- Rendered by JS -->
+  </div>
+
+  <!-- CHARTS -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>Impresiones y conversiones por día</h3>
+      <div class="chart-wrap"><canvas id="chartDias"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Distribución de variantes</h3>
+      <div class="chart-wrap"><canvas id="chartPie"></canvas></div>
+    </div>
+  </div>
+
+  <!-- API TEST -->
+  <div class="api-section">
+    <h3>🔌 API Test — probá los endpoints en vivo</h3>
+    <div class="api-grid">
+      <button class="api-btn" onclick="apiTest('GET','/api/variante')">
+        <div class="method method-get">GET</div>
+        /api/variante
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">Selecciona variante Thompson</div>
+      </button>
+      <button class="api-btn" onclick="apiTest('GET','/api/stats')">
+        <div class="method method-get">GET</div>
+        /api/stats
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">Todas las estadísticas</div>
+      </button>
+      <button class="api-btn" onclick="apiTest('GET','/api/leads')">
+        <div class="method method-get">GET</div>
+        /api/leads
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">Lista de leads</div>
+      </button>
+      <button class="api-btn" onclick="apiTestPost('/api/conversion',{variante:'A'})">
+        <div class="method method-post">POST</div>
+        /api/conversion · variante A
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">Registrar conversión A</div>
+      </button>
+      <button class="api-btn" onclick="apiTestPost('/api/conversion',{variante:'B',utm_source:'instagram',utm_campaign:'verano2025'})">
+        <div class="method method-post">POST</div>
+        /api/conversion · variante B + UTM
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">Con parámetros UTM</div>
+      </button>
+      <button class="api-btn" onclick="apiTestPost('/api/lead',{nombre:'Demo',email:'demo@test.com',destino:'Patagonia',variante:'B',utm_source:'instagram'})">
+        <div class="method method-post">POST</div>
+        /api/lead · lead demo
+        <div style="font-size:10px;color:#64748b;margin-top:2px;">Guardar lead de prueba</div>
+      </button>
+    </div>
+    <div class="api-response" id="api-response">// Hacé click en un endpoint para ver la respuesta...</div>
+  </div>
+
+  <!-- UTM + LEADS TABLE -->
+  <div class="bottom-row">
+    <div class="table-card">
+      <h3>Fuentes UTM de tráfico</h3>
+      <div id="utm-list">
+        <p style="color:#64748b;font-size:13px;">Sin datos UTM aún. Visitá el sitio con ?utm_source=instagram</p>
+      </div>
+    </div>
+    <div class="table-card">
+      <h3>Últimos leads recibidos</h3>
+      <table>
+        <thead><tr><th>Nombre</th><th>Destino</th><th>Variante</th><th>Fecha</th></tr></thead>
+        <tbody id="leads-tbody">
+          <tr><td colspan="4" style="color:#64748b;text-align:center;padding:20px;">Sin leads aún</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="refresh-bar">
+    <button class="btn-refresh" onclick="loadStats()">⟳ Actualizar datos</button>
+    <span class="refresh-info" id="last-update">—</span>
+  </div>
+</div>
+
+<script>
+let chartDias, chartPie;
+const COLORS = { A:'#60a5fa', B:'#22c55e', C:'#f58d54' };
+const NAMES  = { A:'Variante A — Íconos', B:'Variante B — Formulario', C:'Variante C — Tabs' };
+
+async function loadStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    renderKPIs(d);
+    renderVariants(d.variantes);
+    renderCharts(d);
+    renderUTM(d.utmSources);
+    renderLeads(d.leads);
+    document.getElementById('last-update').textContent =
+      'Actualizado: ' + new Date().toLocaleTimeString('es-AR');
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function renderKPIs(d) {
+  document.getElementById('kpi-imp').textContent  = d.totalImpresiones;
+  document.getElementById('kpi-conv').textContent = d.totalConversiones;
+  const tasa = d.totalImpresiones > 0
+    ? ((d.totalConversiones / d.totalImpresiones)*100).toFixed(1)+'%'
+    : '0%';
+  document.getElementById('kpi-tasa').textContent  = tasa;
+  document.getElementById('kpi-leads').textContent = d.totalLeads;
+}
+
+function renderVariants(vs) {
+  const winner = vs.reduce((a,b) => parseFloat(a.tasa) > parseFloat(b.tasa) ? a : b).variante;
+  const maxAlpha = Math.max(...vs.map(v => v.alpha));
+
+  const html = vs.map(v => `
+    <div class="variant-card ${v.variante===winner?'winner':''}">
+      ${v.variante===winner ? '<div class="winner-badge">★ GANANDO</div>' : ''}
+      <div class="v-name">${NAMES[v.variante]}</div>
+      <div class="v-desc">${v.variante==='A'?'Íconos + texto (original)':v.variante==='B'?'Formulario con campos UTM':'Tabs interactivos con destinos'}</div>
+      <div class="v-stats">
+        <div class="v-stat">
+          <div class="sl">Impresiones</div>
+          <div class="sv" style="color:${COLORS[v.variante]}">${v.impresiones}</div>
+        </div>
+        <div class="v-stat">
+          <div class="sl">Conversiones</div>
+          <div class="sv" style="color:${COLORS[v.variante]}">${v.conversiones}</div>
+        </div>
+        <div class="v-stat">
+          <div class="sl">Tasa</div>
+          <div class="sv" style="color:${COLORS[v.variante]}">${v.tasa}%</div>
+        </div>
+      </div>
+      <div class="beta-label">Beta(α=${v.alpha.toFixed(0)}, β=${v.beta.toFixed(0)}) — Probabilidad Thompson</div>
+      <div class="beta-track">
+        <div class="beta-fill fill-${v.variante.toLowerCase()}"
+             style="width:${Math.min((v.alpha/maxAlpha)*100,100)}%"></div>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('variants-grid').innerHTML = html;
+}
+
+function renderCharts(d) {
+  // Días
+  const dias = [...new Set(d.eventosPorDia.map(e => e.fecha))].slice(0,14).reverse();
+  const impData  = dias.map(f => (d.eventosPorDia.find(e=>e.fecha===f&&e.tipo==='impresion')||{total:0}).total);
+  const convData = dias.map(f => (d.eventosPorDia.find(e=>e.fecha===f&&e.tipo==='conversion')||{total:0}).total);
+
+  if (chartDias) chartDias.destroy();
+  chartDias = new Chart(document.getElementById('chartDias'), {
+    type: 'bar',
+    data: {
+      labels: dias.length ? dias : ['Sin datos'],
+      datasets: [
+        { label:'Impresiones', data: impData.length ? impData : [0],
+          backgroundColor:'rgba(96,165,250,.5)', borderColor:'#60a5fa', borderWidth:1 },
+        { label:'Conversiones', data: convData.length ? convData : [0],
+          backgroundColor:'rgba(34,197,94,.5)', borderColor:'#22c55e', borderWidth:1 }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#94a3b8', font:{size:11} } } },
+      scales:{
+        x:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#2d3148'} },
+        y:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#2d3148'}, beginAtZero:true }
+      }
+    }
+  });
+
+  // Pie
+  const pieData = d.variantes.map(v => v.impresiones || 0);
+  if (chartPie) chartPie.destroy();
+  chartPie = new Chart(document.getElementById('chartPie'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Variante A','Variante B','Variante C'],
+      datasets:[{ data: pieData.some(v=>v>0) ? pieData : [1,1,1],
+        backgroundColor:['#60a5fa','#22c55e','#f58d54'],
+        borderColor:'#1a1d27', borderWidth:3 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'bottom', labels:{ color:'#94a3b8', font:{size:11}, padding:16 } }
+      }
+    }
+  });
+}
+
+function renderUTM(sources) {
+  if (!sources || !sources.length) return;
+  const max = sources[0].total;
+  const html = sources.map(s => `
+    <div class="utm-row">
+      <span class="utm-name">${s.utm_source}</span>
+      <div class="utm-bar-wrap">
+        <div class="utm-bar" style="width:${(s.total/max*100).toFixed(0)}%"></div>
+      </div>
+      <span class="utm-count">${s.total}</span>
+    </div>
+  `).join('');
+  document.getElementById('utm-list').innerHTML = html;
+}
+
+function renderLeads(leads) {
+  if (!leads || !leads.length) return;
+  const html = leads.slice(0,8).map(l => `
+    <tr>
+      <td>${l.nombre || '—'}</td>
+      <td>${l.destino || '—'}</td>
+      <td><span class="badge badge-${(l.variante||'b').toLowerCase()}">${l.variante||'B'}</span></td>
+      <td>${l.created_at ? l.created_at.split(' ')[0] : '—'}</td>
+    </tr>
+  `).join('');
+  document.getElementById('leads-tbody').innerHTML = html;
+}
+
+async function apiTest(method, url) {
+  const el = document.getElementById('api-response');
+  el.textContent = '// Cargando...';
+  try {
+    const r = await fetch(url, { method });
+    const data = await r.json();
+    el.textContent = JSON.stringify(data, null, 2);
+    loadStats();
+  } catch(e) { el.textContent = '// Error: ' + e.message; }
+}
+
+async function apiTestPost(url, body) {
+  const el = document.getElementById('api-response');
+  el.textContent = '// Enviando...';
+  try {
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    el.textContent = '// Request:\n' + JSON.stringify(body,null,2) +
+                     '\n\n// Response:\n' + JSON.stringify(data,null,2);
+    loadStats();
+  } catch(e) { el.textContent = '// Error: ' + e.message; }
+}
+
+async function resetData() {
+  if (!confirm('¿Reiniciar todos los datos? Esto borra eventos y leads.')) return;
+  await fetch('/api/reset', { method:'POST' });
+  loadStats();
+}
+
+// Cargar al iniciar y cada 10 segundos
+loadStats();
+setInterval(loadStats, 10000);
+</script>
+</body>
+</html>
