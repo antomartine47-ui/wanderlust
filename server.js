@@ -6,7 +6,7 @@ const fs      = require('fs');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'db', 'wanderlust.json');
-const PUBLIC_DIR = path.join(__dirname, 'publico');
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
 app.use(cors());
 app.use(express.json());
